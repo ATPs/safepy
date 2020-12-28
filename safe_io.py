@@ -21,18 +21,34 @@ from xml.dom import minidom
 
 
 def load_network_from_txt(filename, layout='spring_embedded', node_key_attribute='key', verbose=True):
+    """
+    Loads network from tab-delimited text file and applies a network layout.
+
+    :param str filename: Path to the network file
+    :param str layout: Name of the network layout to be applied
+    :param str node_key_attribute: Name of the node attribute to be used as key for matching with additional attributes
+    :param bool verbose:
+    :return:
+
+    """
 
     filename = re.sub('~', expanduser('~'), filename)
-    data = pd.read_table(filename, sep='\t', header=None)
 
-    if data.shape[1] == 3:
+    # Get the number of columns first
+    with open(filename, 'r') as f:
+        first_line = f.readline()
+        num_cols = len(first_line.split('\t'))
 
+    if num_cols == 3:
+
+        data = pd.read_table(filename, sep='\t', header=None, dtype={0: str, 1: str, 2: float})
         data = data.rename(columns={0: 'node_key1', 1: 'node_key2', 2: 'edge_weight'})
         data['node_label1'] = data['node_key1']
         data['node_label2'] = data['node_key2']
 
-    elif data.shape[1] == 5:
+    elif num_cols == 5:
 
+        data = pd.read_table(filename, sep='\t', header=None, dtype={0: str, 1: str, 2: str, 3: str, 4: float})
         data = data.rename(
             columns={0: 'node_label1', 1: 'node_key1', 2: 'node_label2', 3: 'node_key2', 4: 'edge_weight'})
 
@@ -175,17 +191,26 @@ def load_network_from_cys(filename, verbose=True):
     contains = ['/tables/', file_name, 'SHARED_ATTRS', 'node.cytable']
     attributefile = [f for f in files if all(c in f for c in contains)]
 
-    attributes = pd.read_csv(attributefile[0], sep=',').reset_index()
+    attributes = pd.read_csv(attributefile[0], sep=',', header=None, skiprows=1)
 
-    cols = attributes.iloc[0, :].tolist()
-    attributes = pd.read_csv(attributefile[0], sep=',', skiprows=5, header=None)
-    attributes.columns = cols
+    col_headers = []
+    row_start = 0
+    for ix_row in np.arange(7):
+        val = attributes.iloc[ix_row, 0]
+        if val == 'SUID':
+            col_headers = list(attributes.iloc[ix_row, :])
+        elif str(val).isnumeric():
+            row_start = ix_row
+            break
+
+    attributes.columns = col_headers
+    attributes = attributes.iloc[row_start:, :]
 
     attributes['SUID'] = attributes['SUID'].astype(int)
 
     for ix_row, row in attributes.iterrows():
         if row['SUID'] in G.nodes:
-            for c in cols[1:]:
+            for c in col_headers[1:]:
                 G.nodes[row['SUID']][c] = row[c]
 
     # Relabel the node ids to sequential numbers to make calculations faster
@@ -275,8 +300,7 @@ def load_attributes(attribute_file='', node_label_order=None, mask_duplicates=Fa
 
         elif (file_extension == '.txt') or (file_extension == '.gz'):
 
-            node2attribute = pd.read_csv(file_name, sep='\t')
-            node2attribute.iloc[:, 0] = node2attribute.iloc[:, 0].astype(str)
+            node2attribute = pd.read_csv(file_name, sep='\t', dtype={0: str})
             node2attribute.set_index(node2attribute.columns[0], drop=True, inplace=True)
             node2attribute = node2attribute.apply(pd.to_numeric, downcast='float', errors='coerce')
 
@@ -442,7 +466,7 @@ def plot_costanzo2016_network_annotations(graph, ax, path_to_data, colors=True, 
     processes = costanzo2016['Global Similarity Network Region name'].unique()
     processes = processes[pd.notnull(processes)]
 
-    process_colors = pd.read_table(os.path.join(path_to_data, 'other/costanzo_2016_colors.txt'))
+    process_colors = pd.read_csv(os.path.join(path_to_data, 'other/costanzo_2016_colors.txt'), sep='\t')
     if colors:
         process_colors = process_colors[['R', 'G', 'B']].values / 256
     else:
@@ -478,8 +502,7 @@ def plot_costanzo2016_network_annotations(graph, ax, path_to_data, colors=True, 
         if clabels:
             C.levels = [n_process+1]
             plt.clabel(C, C.levels, inline=True, fmt='%d', fontsize=16)
-
-        # print('%d: %s' % (n_process+1, process))
+            print('%d -- %s' % (n_process+1, process))
 
 
 def plot_labels(labels, graph, ax):
