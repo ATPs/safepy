@@ -4,3 +4,4 @@ safepy_env/*
 
 *.pyc
 
+.vscode/
